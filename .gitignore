@@ -1,0 +1,29 @@
+# Dependencies and build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Secrets (never commit)
+.env*
+!.env.example
+.dev.vars
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+
+# Misc
+.wrangler/
+__pycache__/
+.venv/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# Local tool config
+.claude/

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#121a2b"/>
+      <stop offset="1" stop-color="#070b14"/>
+    </linearGradient>
+    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.55" stop-color="#2dd4bf" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#bg)"/>
+  <rect x="33" y="33" width="958" height="958" rx="223" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="4"/>
+  <circle cx="512" cy="512" r="330" fill="url(#glow)"/>
+  <circle cx="512" cy="512" r="250" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="64"/>
+  <circle cx="512" cy="512" r="250" fill="none" stroke="url(#arc)" stroke-width="64" stroke-linecap="round"
+          stroke-dasharray="1178 1571" transform="rotate(-90 512 512)"/>
+  <path d="M398 520 L478 600 L640 432" fill="none" stroke="#e6fffb" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

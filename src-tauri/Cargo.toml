@@ -1,0 +1,68 @@
+[package]
+name = "keepitincheck"
+version = "0.1.0"
+description = "Edge-docked RAM/CPU monitor that finds and safely closes apps adding no value"
+authors = ["Miloš Milinkov <milos300399@gmail.com>"]
+license-file = "../LICENSE"
+publish = false
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+# The `_lib` suffix avoids a name clash with the bin target on Windows.
+name = "keepitincheck_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Only the process/CPU/RAM part of sysinfo. No GPU, disks, network or components.
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+png = "0.18"
+
+[target.'cfg(windows)'.dependencies]
+# Same versions Tauri/wry already use, so nothing is compiled twice.
+webview2-com = "0.39"
+windows = { version = "0.62", features = [
+  "Wdk_System_SystemInformation",
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Gdi",
+  "Win32_Media_Audio",
+  "Win32_Media_Audio_Endpoints",
+  "Win32_Security",
+  "Win32_Security_Cryptography",
+  "Win32_Security_Cryptography_Catalog",
+  "Win32_Security_Cryptography_Sip",
+  "Win32_Security_WinTrust",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_RemoteDesktop",
+  "Win32_System_Services",
+  "Win32_System_Threading",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+  "Win32_UI_Controls",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+# Small, fast binary: the monitor must stay tiny.
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev.package."*"]
+# Optimise dependencies even in dev so `tauri dev` reflects real CPU cost.
+opt-level = 2
