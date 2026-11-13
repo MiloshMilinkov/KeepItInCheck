@@ -119,3 +119,46 @@ export interface Toggle {
   expand: boolean | null;
   focus: boolean;
 }
+
+export type StartupSource = "userRun" | "machineRun" | "machineRun32" | "userFolder" | "commonFolder";
+
+export interface StartupItem {
+  id: string;
+  name: string;
+  command: string;
+  exe: string | null;
+  publisher: string | null;
+  source: StartupSource;
+  enabled: boolean;
+  /** False when changing it needs administrator rights. */
+  canChange: boolean;
+}
+
+export interface ReportApp {
+  key: string;
+  name: string;
+  exe: string | null;
+  hours: number;
+  avgRam: number;
+  peakRam: number;
+  ramGbh: number;
+  cpuHours: number;
+  avgCpu: number;
+  idleGbh: number;
+  idleShare: number;
+}
+
+export interface DayPoint {
+  start: number;
+  observedSecs: number;
+  avgCpu: number;
+  avgRamPct: number;
+}
+
+export interface WeeklyReport {
+  days: DayPoint[];
+  apps: ReportApp[];
+  cleanups: number;
+  appsClosed: number;
+  ramReturned: number;
+}

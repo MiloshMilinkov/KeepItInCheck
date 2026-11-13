@@ -5,6 +5,7 @@
 //! trait does not require `Send`. Commands that need OS access create their own instance.
 
 use crate::model::ProcSample;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::time::Duration;
 
@@ -37,6 +38,38 @@ pub enum Signature {
     Microsoft,
     /// Signed by someone else, unsigned, or not checkable.
     Other,
+}
+
+/// Where a startup entry is registered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StartupSource {
+    /// HKCU Run key (this user).
+    UserRun,
+    /// HKLM Run key (all users, 64-bit).
+    MachineRun,
+    /// HKLM WOW6432Node Run key (all users, 32-bit apps).
+    MachineRun32,
+    /// This user's Startup folder.
+    UserFolder,
+    /// The all-users Startup folder.
+    CommonFolder,
+}
+
+/// One program that starts with Windows.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupItem {
+    /// Stable id: `<source>:<value or file name>`.
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub exe: Option<String>,
+    pub publisher: Option<String>,
+    pub source: StartupSource,
+    pub enabled: bool,
+    /// False when changing it needs administrator rights (all-users entries).
+    pub can_change: bool,
 }
 
 pub trait Platform {
@@ -81,6 +114,12 @@ pub trait Platform {
 
     /// True when the OS can draw a blurred (Mica/Acrylic) window backdrop.
     fn supports_glass(&self) -> bool;
+
+    /// Programs registered to start with the OS.
+    fn startup_items(&mut self) -> Vec<StartupItem>;
+
+    /// Turn a startup entry on or off without deleting it (reversible).
+    fn set_startup_enabled(&mut self, id: &str, enabled: bool) -> Result<(), String>;
 }
 
 /// Create the platform implementation for this OS.
@@ -97,4 +136,4 @@ pub fn create() -> Box<dyn Platform> {
 
 /// Apply the window corner region / backdrop for the docked panel (Windows only).
 #[cfg(windows)]
-pub use windows::window_style;
+pub use windows::{unix_to_filetime, window_style};

@@ -41,6 +41,9 @@ per app, flags idle "dead weight" apps and closes them safely. Proprietary (see 
 - Drag-to-snap is explicit (`begin_drag` command from the title bar), never inferred from window `Moved` events.
 - Measuring footprint: build the UI (`npx vite build`), serve it with `npx vite preview --port 1420`, run the debug exe
   with `KIC_DUMP` and average `selfCpu`/`selfMem`. Release numbers (2026-11): collapsed ~0.01% CPU / ~25-35 MB, open ~0.5%.
+- Startup apps: only ever write the `Explorer\StartupApproved` flag (byte 0: 2 on, 3 off), never the
+  Run value or shortcut. Tests use a scratch key `HKCU\Software\KeepItInCheck-test`, never the real Run key.
+- Weekly report data lives in `usage.json` (Shared::usage); flushed every 5 min and on quit (Shared::quit waits).
 - PowerShell 5 `Set-Content -Encoding utf8` writes a BOM; settings loading tolerates it, but prefer `[IO.File]::WriteAllText`.
 - Desktop screenshots for visual checks: PowerShell `System.Drawing` `CopyFromScreen` (call
   `SetProcessDPIAware` first) and read the PNG.

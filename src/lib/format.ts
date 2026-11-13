@@ -25,6 +25,12 @@ export function formatDuration(secs: number): string {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
+/** "45 min", "2.5 h", "31 h": decimal hours for totals. */
+export function formatHours(h: number): string {
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  return `${h >= 10 ? Math.round(h) : h.toFixed(1)} h`;
+}
+
 /** Red is reserved for genuinely high load (matches HIGH_LOAD_PCT in model.rs). */
 export function isHigh(pct: number): boolean {
   return pct >= 85;

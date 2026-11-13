@@ -12,6 +12,7 @@ use crate::history::{self, History, TickSignals};
 use crate::model::{AppView, Class, ProcSample, ProcView, Pulse, Snapshot, HIGH_LOAD_PCT};
 use crate::platform::{self, Platform, Signature};
 use crate::protect;
+use crate::report::{AppSample, Usage};
 use crate::settings::Settings;
 use crate::util::{strip_exe, unix_millis, unix_secs};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -24,6 +25,7 @@ use sysinfo::MemoryRefreshKind;
 use tauri::{AppHandle, Emitter};
 
 const SERVICES_EVERY: Duration = Duration::from_secs(30);
+const USAGE_FLUSH_EVERY: Duration = Duration::from_secs(15 * 60);
 const SPARK_SECS: u64 = 60;
 
 pub enum Msg {
@@ -49,6 +51,8 @@ pub struct Shared {
     signatures: Mutex<HashMap<String, bool>>,
     /// Set by `fresh_tick` so even a collapsed tick builds the full snapshot.
     want_full: AtomicBool,
+    /// Per-day app usage for the weekly report, saved to `usage.json`.
+    pub usage: Mutex<Usage>,
     tick: (Mutex<u64>, Condvar),
     tx: Mutex<Option<Sender<Msg>>>,
 }
@@ -56,6 +60,7 @@ pub struct Shared {
 impl Shared {
     pub fn new(settings: Settings, settings_path: PathBuf) -> Arc<Self> {
         Arc::new(Self {
+            usage: Mutex::new(Usage::load(settings_path.with_file_name("usage.json"))),
             settings: RwLock::new(settings),
             settings_path,
             latest: Mutex::new(None),
@@ -96,10 +101,12 @@ impl Shared {
         }
     }
 
+    /// Stop the sampler and save the usage history.
     pub fn quit(&self) {
         if let Some(tx) = self.tx.lock().unwrap().take() {
             let _ = tx.send(Msg::Quit);
         }
+        self.usage.lock().unwrap().save_if_dirty();
     }
 
     /// Run a full tick now and wait (up to `timeout`) until it has been published.
@@ -162,6 +169,10 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Msg>, sig_tx: Sender<St
         if !shared.paused.load(Ordering::Relaxed) || s.ticks == 0 || shared.want_full.load(Ordering::SeqCst) {
             s.tick(&app, &shared);
         }
+        if s.usage_saved.elapsed() >= USAGE_FLUSH_EVERY {
+            shared.usage.lock().unwrap().save_if_dirty();
+            s.usage_saved = Instant::now();
+        }
         let interval = {
             let st = shared.settings.read().unwrap();
             if shared.paused.load(Ordering::Relaxed) {
@@ -214,6 +225,7 @@ struct Sampler {
     ticks: u64,
     /// Debug aid: `KIC_DUMP=path` writes every snapshot as JSON to that file.
     dump: Option<PathBuf>,
+    usage_saved: Instant,
 }
 
 /// Per-tick facts shared by every group while building the view.
@@ -257,6 +269,7 @@ impl Sampler {
             self_pid: std::process::id(),
             ticks: 0,
             dump: std::env::var_os("KIC_DUMP").map(PathBuf::from),
+            usage_saved: Instant::now(),
         }
     }
 
@@ -409,8 +422,12 @@ impl Sampler {
             .filter_map(|p| group_of_pid.get(p))
             .map(|&gi| groups[gi].key.clone())
             .collect();
-        self.history
+        let checkpoint = self
+            .history
             .update(now, &procs, &groups, &TickSignals { foreground_key: fg_key, audio_keys: &audio_keys }, t);
+        if let Some(cp) = checkpoint {
+            self.record_usage(shared, now, &procs, &groups, &cp, &self_tree, cpu, mem_pct);
+        }
 
         if full {
             let fg_chain = self
@@ -432,6 +449,40 @@ impl Sampler {
         let mut n = shared.tick.0.lock().unwrap();
         *n += 1;
         shared.tick.1.notify_all();
+    }
+
+    /// Add one checkpoint to the weekly usage report. Apps on the fixed protected list (system,
+    /// services, security software, KeepItInCheck itself) are not "offenders" and are left out.
+    #[allow(clippy::too_many_arguments)]
+    fn record_usage(
+        &mut self,
+        shared: &Shared,
+        now: u64,
+        procs: &[ProcSample],
+        groups: &[Group],
+        cp: &history::Checkpoint,
+        self_tree: &HashSet<u32>,
+        cpu: f32,
+        mem_pct: f32,
+    ) {
+        let mut rows = Vec::with_capacity(cp.intervals.len());
+        for iv in &cp.intervals {
+            let g = &groups[iv.group];
+            let root = &procs[g.root];
+            let (name, company) = self.exe_info(root.exe.as_deref(), &root.name);
+            if self.system_protection(g, procs, self_tree, company.as_deref()).is_some() {
+                continue;
+            }
+            let mem = g.members.iter().map(|&i| procs[i].mem).sum();
+            rows.push((g, name, mem, iv));
+        }
+        shared.usage.lock().unwrap().record(
+            now,
+            cp.dur,
+            cpu,
+            mem_pct,
+            rows.iter().map(|(g, name, mem, iv)| AppSample { key: &g.key, name, mem: *mem, cpu_ms: iv.cpu_ms, idle: iv.idle }),
+        );
     }
 
     /// Classify every app and publish the snapshot.
@@ -537,6 +588,26 @@ impl Sampler {
         }
     }
 
+    /// Protections that never change while the app runs: our own tree, core Windows, session 0,
+    /// services and security software. Shared by the classifier and the weekly report.
+    fn system_protection(&self, g: &Group, procs: &[ProcSample], self_tree: &HashSet<u32>, company: Option<&str>) -> Option<Protection> {
+        let members = || g.members.iter().map(|&i| &procs[i]);
+        let root = &procs[g.root];
+        if members().any(|p| self_tree.contains(&p.pid)) {
+            Some(Protection::SelfApp)
+        } else if members().any(|p| protect::is_critical(&p.name)) {
+            Some(Protection::Critical)
+        } else if members().any(|p| p.session_id == Some(0)) {
+            Some(Protection::SystemSession)
+        } else if members().any(|p| self.services.contains(&p.pid)) {
+            Some(Protection::Service)
+        } else if members().any(|p| protect::is_security(&p.name, None)) || protect::is_security(&root.name, company) {
+            Some(Protection::Security)
+        } else {
+            None
+        }
+    }
+
     /// Protected-list check. Returns the protection (if any) and whether we are still waiting
     /// for the Authenticode check (only asked for apps big enough to ever be suggested).
     fn protection(
@@ -547,25 +618,16 @@ impl Sampler {
         mem: u64,
         shared: &Shared,
     ) -> (Option<Protection>, bool) {
-        let members = || g.members.iter().map(|&i| &ctx.procs[i]);
         let root = &ctx.procs[g.root];
-        let fixed = if members().any(|p| ctx.self_tree.contains(&p.pid)) {
-            Some(Protection::SelfApp)
-        } else if members().any(|p| protect::is_critical(&p.name)) {
-            Some(Protection::Critical)
-        } else if members().any(|p| p.session_id == Some(0)) {
-            Some(Protection::SystemSession)
-        } else if members().any(|p| self.services.contains(&p.pid)) {
-            Some(Protection::Service)
-        } else if members().any(|p| protect::is_security(&p.name, None)) || protect::is_security(&root.name, company) {
-            Some(Protection::Security)
-        } else if members().any(|p| ctx.fg_chain.contains(&p.pid)) {
-            Some(Protection::ForegroundChain)
-        } else if root.exe.is_none() {
-            Some(Protection::Inaccessible)
-        } else {
-            None
-        };
+        let fixed = self.system_protection(g, ctx.procs, ctx.self_tree, company).or_else(|| {
+            if g.members.iter().any(|&i| ctx.fg_chain.contains(&ctx.procs[i].pid)) {
+                Some(Protection::ForegroundChain)
+            } else if root.exe.is_none() {
+                Some(Protection::Inaccessible)
+            } else {
+                None
+            }
+        });
         if fixed.is_some() {
             return (fixed, false);
         }

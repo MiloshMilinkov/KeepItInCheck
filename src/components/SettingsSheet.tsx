@@ -1,11 +1,10 @@
-import { motion } from "framer-motion";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { baseName, formatBytes, formatPct } from "../lib/format";
 import type { LogEntry, PlatformInfo, Settings, Thresholds } from "../lib/types";
 import { OutcomeIcon } from "./CleanupSheet";
-import { IconBack, IconClose } from "./icons";
-import { NumberField, Segmented, Toggle } from "./ui";
+import { IconChevron, IconClose } from "./icons";
+import { NumberField, Segmented, SubSheet, Toggle } from "./ui";
 
 interface Props {
   settings: Settings;
@@ -15,6 +14,19 @@ interface Props {
   selfCpu: number | null;
   selfMem: number | null;
   onClose: () => void;
+  onOpenTool: (tool: "startup" | "report") => void;
+}
+
+function ToolRow({ label, hint, onClick }: { label: string; hint: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="-mx-2 flex w-[calc(100%+16px)] items-center justify-between gap-3 rounded-md px-2 py-2 text-left hover:bg-hover">
+      <span className="min-w-0">
+        <span className="block text-[12.5px] text-ink">{label}</span>
+        <span className="block text-[11.5px] leading-snug text-ink-2">{hint}</span>
+      </span>
+      <IconChevron size={14} className="shrink-0 text-ink-3" />
+    </button>
+  );
 }
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
@@ -48,7 +60,7 @@ function hotkeyFrom(e: React.KeyboardEvent): string | null {
   return [...mods, key].join("+");
 }
 
-export const SettingsSheet = memo(function SettingsSheet({ settings: s, update, info, selfCpu, selfMem, onClose }: Props) {
+export const SettingsSheet = memo(function SettingsSheet({ settings: s, update, info, selfCpu, selfMem, onClose, onOpenTool }: Props) {
   const [log, setLog] = useState<LogEntry[] | null>(null);
   const [newExclusion, setNewExclusion] = useState("");
   const [capturing, setCapturing] = useState(false);
@@ -62,26 +74,11 @@ export const SettingsSheet = memo(function SettingsSheet({ settings: s, update, 
   const snoozed = Object.entries(s.snoozed).filter(([, until]) => until * 1000 > Date.now());
 
   return (
-    <motion.div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Settings"
-      className="absolute inset-0 z-30 flex flex-col rounded-[14px] bg-bg"
-      initial={{ opacity: 0, x: 16 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 16 }}
-      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-    >
-      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2">
-        <button onClick={onClose} aria-label="Back" className="flex size-7 items-center justify-center rounded-md text-ink-2 hover:bg-hover hover:text-ink">
-          <IconBack />
-        </button>
-        <h2 className="m-0 flex-1 text-[13px] font-semibold text-ink">
-          Settings
-        </h2>
-      </header>
-
-      <div className="scroll min-h-0 flex-1">
+    <SubSheet title="Settings" onBack={onClose}>
+        <Group title="Tools">
+          <ToolRow label="Startup apps" hint="Choose what starts with Windows" onClick={() => onOpenTool("startup")} />
+          <ToolRow label="Weekly report" hint="Top offenders over the last 7 days" onClick={() => onOpenTool("report")} />
+        </Group>
         <Group title="Appearance">
           <Row label="Theme">
             <Segmented
@@ -306,7 +303,6 @@ export const SettingsSheet = memo(function SettingsSheet({ settings: s, update, 
             Quit KeepItInCheck
           </button>
         </Group>
-      </div>
-    </motion.div>
+    </SubSheet>
   );
 });

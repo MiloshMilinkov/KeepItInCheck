@@ -9,12 +9,13 @@ mod audio;
 mod icon;
 mod services;
 mod signature;
+mod startup;
 mod version;
 mod wnd;
 
 pub use wnd::window_style;
 
-use super::{FileInfo, Platform, Signature, WindowInfo};
+use super::{FileInfo, Platform, Signature, StartupItem, WindowInfo};
 use crate::model::ProcSample;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -73,10 +74,17 @@ struct SpInfo {
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<SpInfo>() == 0x100);
 
+/// Seconds between 1601-01-01 (FILETIME epoch) and 1970-01-01.
+const EPOCH_DIFF_SECS: i64 = 11_644_473_600;
+
 /// FILETIME (100 ns since 1601) to unix seconds.
 pub(crate) fn filetime_to_unix(ft: i64) -> u64 {
-    const EPOCH_DIFF_SECS: i64 = 11_644_473_600;
     (ft / 10_000_000 - EPOCH_DIFF_SECS).max(0) as u64
+}
+
+/// Unix seconds to FILETIME (100 ns since 1601).
+pub fn unix_to_filetime(unix: u64) -> u64 {
+    (unix as i64 + EPOCH_DIFF_SECS) as u64 * 10_000_000
 }
 
 /// Null-terminated UTF-16 for Win32 calls.
@@ -276,5 +284,13 @@ impl Platform for WinPlatform {
 
     fn supports_glass(&self) -> bool {
         wnd::is_windows_11()
+    }
+
+    fn startup_items(&mut self) -> Vec<StartupItem> {
+        startup::list(&startup::system_locations())
+    }
+
+    fn set_startup_enabled(&mut self, id: &str, enabled: bool) -> Result<(), String> {
+        startup::set_enabled(&startup::system_locations(), id, enabled)
     }
 }

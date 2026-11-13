@@ -152,12 +152,7 @@ impl Settings {
     }
 
     pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            // Tolerate a UTF-8 BOM left by hand-editing in older editors.
-            .and_then(|s| serde_json::from_str::<Settings>(s.trim_start_matches('\u{feff}')).ok())
-            .unwrap_or_default()
-            .sanitized()
+        crate::util::read_json_or_default::<Settings>(path).sanitized()
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {

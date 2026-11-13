@@ -1,7 +1,7 @@
 // Browser-only stand-in for the Rust back-end. Never shipped in the Tauri build's code path
 // (api.ts only calls it when `isTauri()` is false).
 
-import type { AppView, Class, LogEntry, Report, Settings, Snapshot } from "./types";
+import type { AppView, Class, LogEntry, Report, Settings, Snapshot, StartupItem, WeeklyReport } from "./types";
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
@@ -125,6 +125,15 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
       return { glassSupported: true, monitors: ["\\\\.\\DISPLAY1", "\\\\.\\DISPLAY2"], version: "0.1.0", expanded: true };
     case "app_icon":
       return null;
+    case "startup_items":
+      return startup.map((s) => ({ ...s }));
+    case "set_startup_enabled": {
+      const s = startup.find((x) => x.id === args!.id);
+      if (s) s.enabled = args!.enabled as boolean;
+      return null;
+    }
+    case "weekly_report":
+      return weekly();
     case "cleanup_log":
       return [...log].reverse();
     case "run_cleanup": {
@@ -156,4 +165,62 @@ export async function invoke(cmd: string, args?: Record<string, unknown>): Promi
     default:
       return null;
   }
+}
+
+const startup: StartupItem[] = (
+  [
+    ["Steam", "Valve Corporation", true, true, "userRun"],
+    ["Discord", "Discord Inc.", true, true, "userRun"],
+    ["Spotify", "Spotify AB", false, true, "userRun"],
+    ["NVIDIA Broadcast", "NVIDIA Corporation", true, false, "machineRun"],
+    ["Logitech G HUB", "Logitech", true, false, "machineRun32"],
+  ] as const
+).map(([name, publisher, enabled, canChange, source]) => ({
+  id: `${source}:${name}`,
+  name,
+  command: `"C:\\Apps\\${name}.exe" --background`,
+  exe: `C:\\Apps\\${name}.exe`,
+  publisher,
+  source,
+  enabled,
+  canChange,
+}));
+
+function weekly(): WeeklyReport {
+  const day = 86400;
+  const today = Math.floor(Date.now() / 1000 / day);
+  const apps = (
+    [
+      ["Discord", 0.61, 29, 0.02, 0.97],
+      ["Google Chrome", 1.8, 31, 0.9, 0.12],
+      ["Steam", 0.46, 31, 0.03, 0.99],
+      ["Visual Studio Code", 1.1, 22, 0.6, 0.3],
+      ["Adobe Creative Cloud", 0.19, 31, 0.0, 1.0],
+      ["Slack", 0.4, 18, 0.2, 0.55],
+    ] as const
+  ).map(([name, gb, hours, cpuHours, idle]) => ({
+    key: name.toLowerCase(),
+    name,
+    exe: null,
+    hours,
+    avgRam: gb * GB,
+    peakRam: gb * 1.4 * GB,
+    ramGbh: gb * hours,
+    cpuHours,
+    avgCpu: (cpuHours / hours / 16) * 100,
+    idleGbh: gb * hours * idle,
+    idleShare: idle,
+  }));
+  return {
+    days: Array.from({ length: 7 }, (_, i) => ({
+      start: (today - 6 + i) * day,
+      observedSecs: i === 1 ? 0 : 3600 * (2 + (i % 3) * 3),
+      avgCpu: 8 + ((i * 7) % 11),
+      avgRamPct: i === 1 ? 0 : 48 + ((i * 13) % 22),
+    })),
+    apps,
+    cleanups: 4,
+    appsClosed: 7,
+    ramReturned: 2.3 * GB,
+  };
 }

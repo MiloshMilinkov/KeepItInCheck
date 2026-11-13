@@ -86,7 +86,15 @@ fn available_memory() -> u64 {
         .unwrap_or(0)
 }
 
-fn entry(app: &AppView, outcome: Outcome, detail: impl Into<String>, dry_run: bool) -> LogEntry {
+impl Outcome {
+    /// The app is gone and its memory went back to the system.
+    pub fn freed(self) -> bool {
+        matches!(self, Outcome::Closed | Outcome::ForceKilled)
+    }
+}
+
+/// Every entry of one cleanup run carries the same `at`, so runs can be counted later.
+fn entry(app: &AppView, outcome: Outcome, detail: impl Into<String>, dry_run: bool, at: u64) -> LogEntry {
     LogEntry {
         key: app.key.clone(),
         name: app.name.clone(),
@@ -95,8 +103,32 @@ fn entry(app: &AppView, outcome: Outcome, detail: impl Into<String>, dry_run: bo
         outcome,
         detail: detail.into(),
         dry_run,
-        at: unix_secs(),
+        at,
     }
+}
+
+/// What real (non-dry-run) cleanups achieved since a moment in time.
+pub struct Totals {
+    pub runs: u32,
+    pub apps_closed: u32,
+    pub ram_returned: u64,
+}
+
+pub fn totals_since(log: &[LogEntry], since: u64) -> Totals {
+    let mut runs = std::collections::BTreeSet::new();
+    let mut t = Totals { runs: 0, apps_closed: 0, ram_returned: 0 };
+    for e in log.iter().filter(|e| !e.dry_run && e.at >= since) {
+        // A run that only skipped apps did not clean anything up.
+        if e.outcome != Outcome::Skipped {
+            runs.insert(e.at);
+        }
+        if e.outcome.freed() {
+            t.apps_closed += 1;
+            t.ram_returned += e.mem;
+        }
+    }
+    t.runs = runs.len() as u32;
+    t
 }
 
 /// Terminate every listed process (start-time checked). Returns how many could not be ended.
@@ -139,6 +171,7 @@ pub fn run(app: &AppHandle, shared: &Shared, keys: &[String], dry_run: bool) -> 
     let _guard = RunningGuard(shared);
 
     // Fresh data: the user may have switched to one of these apps since the preview opened.
+    let at = unix_secs();
     let mut entries = Vec::new();
     let mut targets = Vec::new();
     for t in fresh_targets(shared, keys) {
@@ -151,13 +184,14 @@ pub fn run(app: &AppHandle, shared: &Shared, keys: &[String], dry_run: bool) -> 
                 outcome: Outcome::Skipped,
                 detail: "Already closed".into(),
                 dry_run,
-                at: unix_secs(),
+                at,
             }),
             Ok(t) if t.app.verdict.class == Class::Keep => entries.push(entry(
                 &t.app,
                 Outcome::Skipped,
                 format!("No longer suggested: {}", t.app.verdict.reason),
                 dry_run,
+                at,
             )),
             Ok(t) => targets.push(t),
         }
@@ -170,7 +204,7 @@ pub fn run(app: &AppHandle, shared: &Shared, keys: &[String], dry_run: bool) -> 
             } else {
                 "Would ask it to close, then end it after 5 s if it doesn't respond."
             };
-            entries.push(entry(&t.app, Outcome::WouldClose, detail, true));
+            entries.push(entry(&t.app, Outcome::WouldClose, detail, true, at));
         }
         let estimated = targets.iter().map(|t| t.app.mem).sum();
         return Ok(Report { entries, freed: 0, estimated, dry_run: true });
@@ -199,14 +233,14 @@ pub fn run(app: &AppHandle, shared: &Shared, keys: &[String], dry_run: bool) -> 
     for t in &targets {
         let left: Vec<(u32, u64)> = t.procs.iter().copied().filter(|p| alive.contains(p)).collect();
         let e = if left.is_empty() {
-            entry(&t.app, Outcome::Closed, "Closed gracefully", false)
+            entry(&t.app, Outcome::Closed, "Closed gracefully", false, at)
         } else if left.iter().any(|(pid, _)| windowed_now.contains(pid)) {
             let why = if t.app.has_window {
                 "Didn't close within 5 s. It may be asking to save your work, so it was left running."
             } else {
                 "Opened a window when asked to close (maybe a save prompt), so it was left running."
             };
-            entry(&t.app, Outcome::StillRunning, why, false)
+            entry(&t.app, Outcome::StillRunning, why, false, at)
         } else {
             // Only windowless processes remain: safe to end them.
             match (kill_all(&mut plat, &left), t.app.has_window) {
@@ -215,14 +249,16 @@ pub fn run(app: &AppHandle, shared: &Shared, keys: &[String], dry_run: bool) -> 
                     Outcome::ForceKilled,
                     "Didn't respond in 5 s; ended (background process, no window)",
                     false,
+                    at,
                 ),
                 (0, true) => entry(
                     &t.app,
                     Outcome::Closed,
                     format!("Closed; ended {} leftover background helper(s)", left.len()),
                     false,
+                    at,
                 ),
-                (n, _) => entry(&t.app, Outcome::Failed, access_denied(n), false),
+                (n, _) => entry(&t.app, Outcome::Failed, access_denied(n), false, at),
             }
         };
         entries.push(e);
@@ -234,7 +270,7 @@ pub fn run(app: &AppHandle, shared: &Shared, keys: &[String], dry_run: bool) -> 
     let after = available_memory();
     let estimated = entries
         .iter()
-        .filter(|e| matches!(e.outcome, Outcome::Closed | Outcome::ForceKilled))
+        .filter(|e| e.outcome.freed())
         .map(|e| e.mem)
         .sum();
     append_log(&log_path(shared), &entries);
@@ -251,9 +287,10 @@ pub fn force_close(shared: &Shared, key: &str) -> Result<LogEntry, String> {
     if t.app.verdict.protected {
         return Err(format!("Refusing: {}", t.app.verdict.reason));
     }
+    let at = unix_secs();
     let e = match kill_all(&mut platform::create(), &t.procs) {
-        0 => entry(&t.app, Outcome::ForceKilled, "Force closed at your request", false),
-        n => entry(&t.app, Outcome::Failed, access_denied(n), false),
+        0 => entry(&t.app, Outcome::ForceKilled, "Force closed at your request", false, at),
+        n => entry(&t.app, Outcome::Failed, access_denied(n), false, at),
     };
     append_log(&log_path(shared), std::slice::from_ref(&e));
     shared.wake();
@@ -265,10 +302,7 @@ pub fn log_path(shared: &Shared) -> PathBuf {
 }
 
 pub fn read_log(path: &Path) -> Vec<LogEntry> {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    crate::util::read_json_or_default(path)
 }
 
 fn append_log(path: &Path, new: &[LogEntry]) {
@@ -289,4 +323,36 @@ pub fn relaunch(shared: &Shared, exe: &str) -> Result<(), String> {
         return Err("Only apps closed by KeepItInCheck can be relaunched".into());
     }
     platform::create().launch(exe)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn totals_count_runs_by_shared_timestamp() {
+        let e = |at: u64, outcome: Outcome, dry_run: bool| LogEntry {
+            key: "k".into(),
+            name: "n".into(),
+            exe: None,
+            mem: 100,
+            outcome,
+            detail: String::new(),
+            dry_run,
+            at,
+        };
+        let log = vec![
+            e(1000, Outcome::Closed, false),
+            e(1000, Outcome::ForceKilled, false),
+            e(1000, Outcome::StillRunning, false),
+            e(2000, Outcome::Closed, false),
+            e(3000, Outcome::WouldClose, true),
+            e(10, Outcome::Closed, false),
+            e(4000, Outcome::Skipped, false),
+        ];
+        let t = totals_since(&log, 500);
+        assert_eq!(t.runs, 2);
+        assert_eq!(t.apps_closed, 3);
+        assert_eq!(t.ram_returned, 300);
+    }
 }

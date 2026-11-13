@@ -7,7 +7,7 @@ import type { AppView, SortBy } from "../lib/types";
 import { VERDICT } from "../lib/verdict";
 import { AppIcon } from "./AppIcon";
 import { IconBan, IconShield } from "./icons";
-import { Segmented } from "./ui";
+import { Segmented, ShareBar } from "./ui";
 
 interface Props {
   apps: AppView[];
@@ -179,13 +179,7 @@ const Row = memo(function Row({ app, open, onToggle, share, hot, sortBy, onExclu
           {formatPct(app.cpu)}
         </span>
         <span className={`text-right text-[12px] ${sortBy === "ram" ? "text-ink" : "text-ink-2"}`}>{formatBytes(app.mem)}</span>
-        {/* Proportional bar: transform-only so it animates on the compositor. */}
-        <span className="pointer-events-none absolute bottom-1 left-[38px] right-2 h-[2px] overflow-hidden rounded-full bg-track/60">
-          <span
-            className={`block h-full origin-left rounded-full transition-transform duration-200 ease-out ${hot ? "bg-danger" : "bg-accent/70"}`}
-            style={{ transform: `scaleX(${share})` }}
-          />
-        </span>
+        <ShareBar share={share} hot={hot} />
       </button>
       <AnimatePresence initial={false}>
         {open && (

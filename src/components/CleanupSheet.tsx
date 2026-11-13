@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { memo, useEffect, useMemo, useState } from "react";
 import { api, on } from "../lib/api";
 import { formatBytes } from "../lib/format";
@@ -7,7 +7,7 @@ import { isClosed, VERDICT } from "../lib/verdict";
 import { AppIcon } from "./AppIcon";
 import { flaggedApps } from "./DeadWeight";
 import { IconCheck, IconClose, IconRelaunch, IconWarn } from "./icons";
-import { Checkbox, Toggle } from "./ui";
+import { Checkbox, InlineConfirm, Toggle } from "./ui";
 
 interface Props {
   apps: AppView[];
@@ -267,30 +267,18 @@ function ResultRow({ entry, onUpdate }: { entry: LogEntry; onUpdate: (e: LogEntr
           )}
         </div>
       )}
-      <AnimatePresence>
-        {confirm && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden pl-[54px]"
-          >
-            <div className="mt-2 rounded-lg border border-danger/40 bg-danger-soft p-2.5">
-              <p className="m-0 text-[12px] leading-snug text-ink">
-                Force close {entry.name}? Anything unsaved in its windows will be lost.
-              </p>
-              <div className="mt-2 flex gap-1.5">
-                <button onClick={() => setConfirm(false)} className="rounded-md px-2 py-1 text-[11.5px] whitespace-nowrap text-ink-2 hover:bg-hover">
-                  Keep running
-                </button>
-                <button disabled={busy} onClick={force} className="rounded-md bg-danger px-2 py-1 text-[11.5px] font-semibold whitespace-nowrap text-white">
-                  Force close
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="pl-[54px]">
+        <InlineConfirm
+          open={confirm}
+          tone="danger"
+          busy={busy}
+          message={`Force close ${entry.name}? Anything unsaved in its windows will be lost.`}
+          cancelLabel="Keep running"
+          confirmLabel="Force close"
+          onCancel={() => setConfirm(false)}
+          onConfirm={force}
+        />
+      </div>
     </li>
   );
 }

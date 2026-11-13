@@ -5,7 +5,9 @@ import { CleanupSheet } from "./components/CleanupSheet";
 import { DeadWeight } from "./components/DeadWeight";
 import { EdgeStrip } from "./components/EdgeStrip";
 import { Gauge } from "./components/Gauge";
+import { ReportSheet } from "./components/ReportSheet";
 import { SettingsSheet } from "./components/SettingsSheet";
+import { StartupSheet } from "./components/StartupSheet";
 import { TitleBar } from "./components/TitleBar";
 import { useSettings } from "./hooks/useSettings";
 import { useSnapshot } from "./hooks/useSnapshot";
@@ -14,7 +16,10 @@ import { baseName, formatBytes, formatPct } from "./lib/format";
 import type { AppView, Edge, PlatformInfo, Snapshot, SortBy } from "./lib/types";
 
 type Phase = "starting" | "open" | "closing" | "closed";
-type Sheet = "cleanup" | "settings" | null;
+type Sheet = "cleanup" | "settings" | "startup" | "report" | null;
+
+/** Where Back / Escape go from each sheet (null closes it). */
+const PARENT: Record<Exclude<Sheet, null>, Sheet> = { cleanup: null, settings: null, startup: "settings", report: "settings" };
 
 /** Offset the panel slides in from, towards its docked edge. */
 function slide(edge: Edge) {
@@ -121,7 +126,7 @@ export default function App() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (sheet) setSheet(null);
+      if (sheet) setSheet(PARENT[sheet]);
       else if (settings?.autoHide) close();
     };
     window.addEventListener("keydown", key);
@@ -147,6 +152,7 @@ export default function App() {
   // The back-end owns the paused state and echoes it back through the `paused` event.
   const togglePause = useCallback(() => api.setPaused(!paused), [paused]);
   const closeSheet = useCallback(() => setSheet(null), []);
+  const back = useCallback(() => setSheet((s) => (s ? PARENT[s] : null)), []);
   const onSort = useCallback((sortBy: SortBy) => update({ sortBy }), [update]);
   const onCleanUp = useCallback(() => setSheet("cleanup"), []);
 
@@ -218,8 +224,11 @@ export default function App() {
                     selfCpu={snap ? Math.round(snap.selfCpu * 10) / 10 : null}
                     selfMem={snap ? Math.round(snap.selfMem / 1048576) * 1048576 : null}
                     onClose={closeSheet}
+                    onOpenTool={setSheet}
                   />
                 )}
+                {sheet === "startup" && <StartupSheet key="startup" onBack={back} />}
+                {sheet === "report" && <ReportSheet key="report" onBack={back} />}
               </AnimatePresence>
             </motion.main>
           )}

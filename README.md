@@ -19,6 +19,11 @@ ones that are running but adding nothing, and closes them safely, only after you
   active window are never suggested or closed.
 - **Stays out of the way.** Docks to any edge of any monitor and auto-hides to a thin glowing
   strip. Ctrl+Alt+R toggles it, and there's a tray menu.
+- **Startup apps.** See everything that starts with Windows (Run keys and Startup folders) and
+  switch entries off with a confirmation. It uses the same reversible switch as Task Manager;
+  nothing is deleted. All-users entries need admin and are shown read-only.
+- **Weekly report.** Top offenders over the last 7 days by RAM held while idle, memory
+  (GB·h) and CPU time, a per-day RAM chart, and what your cleanups returned.
 - **Local only.** No network calls, no telemetry. CPU and RAM only, no GPU tracking.
 
 ## Requirements
@@ -94,16 +99,17 @@ src-tauri/                 Rust back-end (Tauri 2)
   src/classifier.rs        dead-weight score and Safe / Probable / Keep verdicts (unit tests)
   src/protect.rs           protected, security, cautious and helper process lists
   src/cleanup.rs           graceful close -> 5 s -> background-only kill, log, relaunch
+  src/report.rs            per-day usage store and the weekly "top offenders" report
   src/dock.rs              per-monitor, DPI-aware edge geometry (unit tests)
   src/shell.rs             tray, global hotkey, drag-to-snap, Acrylic backdrop, autostart
   src/commands.rs          IPC surface used by the UI
   src/platform/            OS abstraction (trait Platform)
     windows/               NtQuerySystemInformation process table, EnumWindows, WASAPI audio,
-                           service PIDs, version info, Authenticode, shell icons
+                           service PIDs, version info, Authenticode, shell icons, startup apps
     other.rs               stub back-end for macOS / Linux (falls back to sysinfo)
 src/                       React + TypeScript + Tailwind + Framer Motion UI
   components/              Gauge, Sparkline, AppList, DeadWeight, CleanupSheet, SettingsSheet,
-                           TitleBar, EdgeStrip
+                           TitleBar, EdgeStrip, StartupSheet, ReportSheet
   hooks/                   useSnapshot, useSettings, useTicker, useIcon
   lib/                     typed IPC wrapper, formatting, browser mock
 docs/dead-weight-score.md  how the score works and how to tune it
@@ -133,6 +139,7 @@ Stored in `%APPDATA%\com.milinkov.keepitincheck\`:
 - `settings.json`: refresh rates, dock edge and monitor, thresholds, never-touch list, snoozes,
   theme, hotkey
 - `cleanup-log.json`: last 200 cleanup results
+- `usage.json`: per-day, per-app usage totals for the weekly report (kept for 8 days)
 
 ## License
 

@@ -3,7 +3,7 @@
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { LogEntry, PlatformInfo, Pulse, Report, Settings, Snapshot, Toggle } from "./types";
+import type { LogEntry, PlatformInfo, Pulse, Report, Settings, Snapshot, StartupItem, Toggle, WeeklyReport } from "./types";
 
 export const native = isTauri();
 // Loaded only in a plain browser, so the Tauri build never runs the mock timer.
@@ -62,5 +62,8 @@ export const api = {
   cleanupLog: () => call<LogEntry[]>("cleanup_log"),
   platformInfo: () => call<PlatformInfo>("platform_info"),
   quit: () => call<void>("quit_app"),
+  startupItems: () => call<StartupItem[]>("startup_items"),
+  setStartupEnabled: (id: string, enabled: boolean) => call<void>("set_startup_enabled", { id, enabled }),
+  weeklyReport: () => call<WeeklyReport>("weekly_report"),
   beginDrag: () => call<void>("begin_drag"),
 };

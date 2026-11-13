@@ -49,6 +49,11 @@ export const IconHide = ({ className, size }: P) => (
     <path d="M13 3v10" />
   </svg>
 );
+export const IconChevron = ({ className, size }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M6 4l4 4-4 4" />
+  </svg>
+);
 export const IconShield = ({ className, size }: P) => (
   <svg {...base(size)} className={className}>
     <path d="M8 1.8l5 2v4c0 3-2.2 5.2-5 6.4-2.8-1.2-5-3.4-5-6.4v-4z" />

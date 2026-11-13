@@ -2,7 +2,8 @@
 
 use crate::cleanup::{self, LogEntry, Report};
 use crate::model::Snapshot;
-use crate::platform;
+use crate::platform::{self, StartupItem};
+use crate::report::WeeklyReport;
 use crate::sampler::Shared;
 use crate::settings::Settings;
 use crate::shell;
@@ -97,6 +98,47 @@ pub fn cleanup_log(state: Sh<'_>) -> Vec<LogEntry> {
     let mut log = cleanup::read_log(&cleanup::log_path(&state));
     log.reverse();
     log
+}
+
+/// True for our own "Launch at startup" entry, which is managed in Settings instead.
+fn is_own_entry(item: &StartupItem) -> bool {
+    let own = std::env::current_exe().ok().map(|p| p.to_string_lossy().to_lowercase());
+    own.is_some() && item.exe.as_ref().map(|e| e.to_lowercase()) == own
+}
+
+/// Programs that start with Windows (registry + Startup folders).
+#[tauri::command]
+pub async fn startup_items() -> Vec<StartupItem> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut items = platform::create().startup_items();
+        items.retain(|i| !is_own_entry(i));
+        items
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Enable or disable one startup entry (reversible; nothing is deleted).
+#[tauri::command]
+pub async fn set_startup_enabled(id: String, enabled: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut plat = platform::create();
+        if plat.startup_items().iter().any(|i| i.id == id && is_own_entry(i)) {
+            return Err("KeepItInCheck's own startup setting is in Settings".to_string());
+        }
+        plat.set_startup_enabled(&id, enabled)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Top offenders over the last 7 days.
+#[tauri::command]
+pub fn weekly_report(state: Sh<'_>) -> WeeklyReport {
+    let log = cleanup::read_log(&cleanup::log_path(&state));
+    // Same core count the live view uses, so averages agree.
+    let cores = state.latest.lock().unwrap().as_ref().map(|s| s.cores).unwrap_or(1);
+    state.usage.lock().unwrap().report(crate::util::unix_secs(), cores, &log)
 }
 
 #[derive(Serialize)]

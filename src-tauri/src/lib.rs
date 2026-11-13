@@ -15,6 +15,7 @@
 //! - `classifier` dead-weight score and Safe / Probable / Keep verdicts (unit-tested)
 //! - `protect`    protected and cautious process lists
 //! - `cleanup`    graceful close, 5 s grace, background-only force kill, log, relaunch
+//! - `report`     per-day usage store behind the weekly "top offenders" report
 //! - `platform`   OS abstraction (Windows implementation + stubs for other OSes)
 //! - `dock`/`shell` edge docking, tray, hotkey, backdrop, autostart
 //! - `commands`   IPC surface for the React UI
@@ -28,6 +29,7 @@ mod history;
 mod model;
 mod platform;
 mod protect;
+mod report;
 mod sampler;
 mod settings;
 mod shell;
@@ -84,6 +86,9 @@ pub fn run() {
             commands::set_paused,
             commands::set_detail,
             commands::begin_drag,
+            commands::startup_items,
+            commands::set_startup_enabled,
+            commands::weekly_report,
             commands::app_icon,
             commands::run_cleanup,
             commands::force_close,

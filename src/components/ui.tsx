@@ -1,6 +1,7 @@
 // Small shared controls.
 
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { IconBack } from "./icons";
 import { useId, type ReactNode } from "react";
 
 export function Segmented<T extends string>({
@@ -46,6 +47,39 @@ export function Segmented<T extends string>({
   );
 }
 
+/** A bare on/off switch. */
+export function Switch({
+  checked,
+  onChange,
+  disabled,
+  id,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  id?: string;
+  label?: string;
+}) {
+  return (
+    <button
+      id={id}
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative mt-0.5 h-[18px] w-[30px] shrink-0 rounded-full transition-colors disabled:opacity-50 ${checked ? "bg-accent" : "bg-track"}`}
+    >
+      <motion.span
+        className="absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white shadow"
+        animate={{ x: checked ? 12 : 0 }}
+        transition={{ type: "spring", stiffness: 700, damping: 40 }}
+      />
+    </button>
+  );
+}
+
 export function Toggle({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: ReactNode; disabled?: boolean }) {
   const id = useId();
   return (
@@ -54,21 +88,32 @@ export function Toggle({ checked, onChange, label, hint, disabled }: { checked: 
         <span className="block text-[12.5px] text-ink">{label}</span>
         {hint && <span className="mt-0.5 block text-[11.5px] leading-snug text-ink-2">{hint}</span>}
       </label>
-      <button
-        id={id}
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-[18px] w-[30px] shrink-0 rounded-full transition-colors ${checked ? "bg-accent" : "bg-track"}`}
-      >
-        <motion.span
-          className="absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white shadow"
-          animate={{ x: checked ? 12 : 0 }}
-          transition={{ type: "spring", stiffness: 700, damping: 40 }}
-        />
-      </button>
+      <Switch id={id} checked={checked} onChange={onChange} disabled={disabled} />
     </div>
+  );
+}
+
+/** Full-panel sheet with a back button, shared by Settings, Startup apps and the report. */
+export function SubSheet({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
+  return (
+    <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className="absolute inset-0 z-30 flex flex-col rounded-[14px] bg-bg"
+      initial={{ opacity: 0, x: 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 16 }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2">
+        <button onClick={onBack} aria-label="Back" className="flex size-7 items-center justify-center rounded-md text-ink-2 hover:bg-hover hover:text-ink">
+          <IconBack />
+        </button>
+        <h2 className="m-0 flex-1 text-[13px] font-semibold text-ink">{title}</h2>
+      </header>
+      <div className="scroll min-h-0 flex-1">{children}</div>
+    </motion.div>
   );
 }
 
@@ -148,5 +193,69 @@ export function IconButton({ label, onClick, children, active }: { label: string
     >
       {children}
     </button>
+  );
+}
+
+/** Thin proportional bar along the bottom of a list row. Transform-only, so it animates on the
+ *  compositor. `share` is 0..1. */
+export function ShareBar({ share, hot = false }: { share: number; hot?: boolean }) {
+  return (
+    <span className="pointer-events-none absolute right-2 bottom-1 left-[38px] h-[2px] overflow-hidden rounded-full bg-track/60">
+      <span
+        className={`block h-full origin-left rounded-full transition-transform duration-200 ease-out ${hot ? "bg-danger" : "bg-accent/70"}`}
+        style={{ transform: `scaleX(${Math.max(0.01, Math.min(1, share))})` }}
+      />
+    </span>
+  );
+}
+
+/** Inline "are you sure?" panel that slides open under a row. */
+export function InlineConfirm({
+  open,
+  message,
+  cancelLabel,
+  confirmLabel,
+  onCancel,
+  onConfirm,
+  tone = "accent",
+  busy,
+}: {
+  open: boolean;
+  message: ReactNode;
+  cancelLabel: string;
+  confirmLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  tone?: "accent" | "danger";
+  busy?: boolean;
+}) {
+  const danger = tone === "danger";
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          className="overflow-hidden"
+        >
+          <div className={`mt-2 rounded-lg border p-2.5 ${danger ? "border-danger/40 bg-danger-soft" : "border-line bg-raised"}`}>
+            <p className="m-0 text-[12px] leading-snug text-ink">{message}</p>
+            <div className="mt-2 flex gap-1.5">
+              <button onClick={onCancel} className="rounded-md px-2 py-1 text-[11.5px] whitespace-nowrap text-ink-2 hover:bg-hover">
+                {cancelLabel}
+              </button>
+              <button
+                disabled={busy}
+                onClick={onConfirm}
+                className={`rounded-md px-2 py-1 text-[11.5px] font-semibold whitespace-nowrap hover:brightness-110 ${danger ? "bg-danger text-white" : "bg-accent text-accent-ink"}`}
+              >
+                {confirmLabel}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

@@ -66,6 +66,22 @@ pub struct History {
     groups: HashMap<String, GroupHist>,
 }
 
+/// What one app did during a checkpoint interval (fed to the weekly usage report).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Interval {
+    /// Index into the `groups` slice passed to `update`.
+    pub group: usize,
+    pub cpu_ms: u64,
+    /// CPU and I/O both stayed under the idle thresholds.
+    pub idle: bool,
+}
+
+/// A completed checkpoint: its length in seconds and every app's interval.
+pub struct Checkpoint {
+    pub dur: u64,
+    pub intervals: Vec<Interval>,
+}
+
 /// Per-tick signals that do not come from cumulative counters.
 pub struct TickSignals<'a> {
     pub foreground_key: Option<&'a str>,
@@ -77,8 +93,16 @@ impl History {
         Self { cores: cores.max(1), last_checkpoint: None, pids: HashMap::new(), groups: HashMap::new() }
     }
 
-    /// Feed one sampler tick. `now` is unix seconds.
-    pub fn update(&mut self, now: u64, procs: &[ProcSample], groups: &[Group], signals: &TickSignals, t: &Thresholds) {
+    /// Feed one sampler tick. `now` is unix seconds. Returns the checkpoint when one was taken
+    /// (about every 15 s).
+    pub fn update(
+        &mut self,
+        now: u64,
+        procs: &[ProcSample],
+        groups: &[Group],
+        signals: &TickSignals,
+        t: &Thresholds,
+    ) -> Option<Checkpoint> {
         for g in groups {
             // `get_mut` first: the key is only cloned for a group seen for the first time.
             if !self.groups.contains_key(&g.key) {
@@ -110,15 +134,14 @@ impl History {
         let due = self
             .last_checkpoint
             .is_none_or(|t| now.saturating_sub(t) >= CHECKPOINT_SECS);
-        if due {
-            self.checkpoint(now, procs, groups, t);
-        }
+        let checkpoint = if due { self.checkpoint(now, procs, groups, t) } else { None };
 
         self.groups
             .retain(|_, h| now.saturating_sub(h.last_seen) <= FORGET_AFTER_SECS);
+        checkpoint
     }
 
-    fn checkpoint(&mut self, now: u64, procs: &[ProcSample], groups: &[Group], t: &Thresholds) {
+    fn checkpoint(&mut self, now: u64, procs: &[ProcSample], groups: &[Group], t: &Thresholds) -> Option<Checkpoint> {
         let prev = self.last_checkpoint;
         let mut next = HashMap::with_capacity(procs.len());
         // Per-process deltas since the previous checkpoint.
@@ -143,11 +166,12 @@ impl History {
         self.pids = next;
         self.last_checkpoint = Some(now);
 
-        let Some(prev) = prev else { return };
+        let prev = prev?;
         let dur = now.saturating_sub(prev).max(1);
+        let mut intervals = Vec::with_capacity(groups.len());
         let keep_after = now.saturating_sub(t.window_secs() + CHECKPOINT_SECS);
         let max_io_bps = t.max_io_bps();
-        for g in groups {
+        for (gi, g) in groups.iter().enumerate() {
             let (cpu_ms, io) = g
                 .members
                 .iter()
@@ -155,14 +179,17 @@ impl History {
             let Some(h) = self.groups.get_mut(&g.key) else { continue };
             let cpu_pct = machine_pct(cpu_ms as f64, dur as f64 * 1000.0, self.cores);
             let io_bps = io as f64 / dur as f64;
-            if cpu_pct >= t.idle_cpu_pct || io_bps >= max_io_bps {
+            let active = cpu_pct >= t.idle_cpu_pct || io_bps >= max_io_bps;
+            if active {
                 h.last_active = now;
             }
+            intervals.push(Interval { group: gi, cpu_ms, idle: !active });
             h.records.push_back(Rec { t: now, dur, cpu_ms, io });
             while h.records.front().is_some_and(|r| r.t < keep_after) {
                 h.records.pop_front();
             }
         }
+        Some(Checkpoint { dur, intervals })
     }
 
     pub fn stats(&self, key: &str, now: u64, window_secs: u64) -> GroupStats {

@@ -4,7 +4,7 @@
 //! `None`. Window, audio and service detection return empty sets, which makes the classifier
 //! conservative (see the TODOs). Implement these to bring the dead-weight detector to a new OS.
 
-use super::{FileInfo, Platform, Signature, WindowInfo};
+use super::{FileInfo, Platform, Signature, StartupItem, WindowInfo};
 use crate::model::ProcSample;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -82,5 +82,12 @@ impl Platform for OtherPlatform {
     }
     fn supports_glass(&self) -> bool {
         false
+    }
+    fn startup_items(&mut self) -> Vec<StartupItem> {
+        // TODO: ~/Library/LaunchAgents, ~/.config/autostart
+        Vec::new()
+    }
+    fn set_startup_enabled(&mut self, _id: &str, _enabled: bool) -> Result<(), String> {
+        Err("Not supported on this OS yet".into())
     }
 }
