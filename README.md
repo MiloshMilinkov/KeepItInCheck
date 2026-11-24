@@ -6,6 +6,8 @@
 A tiny edge-docked Windows panel that shows which apps are eating your RAM and CPU, spots the
 ones that are running but adding nothing, and closes them safely, only after you confirm.
 
+![KeepItInCheck panel](docs/screenshot.jpg)
+
 - **Live view.** CPU and RAM ring gauges with 60-second sparklines, and a Top consumers list
   that rolls Chrome, Edge, Discord and other multi-process apps up into one row.
 - **Dead weight detector.** Flags idle apps as *Safe to close* or *Probably safe*, each with a

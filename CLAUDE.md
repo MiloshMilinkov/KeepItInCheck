@@ -47,3 +47,8 @@ per app, flags idle "dead weight" apps and closes them safely. Proprietary (see 
 - PowerShell 5 `Set-Content -Encoding utf8` writes a BOM; settings loading tolerates it, but prefer `[IO.File]::WriteAllText`.
 - Desktop screenshots for visual checks: PowerShell `System.Drawing` `CopyFromScreen` (call
   `SetProcessDPIAware` first) and read the PNG.
+- README screenshot (`docs/screenshot.jpg`): capture the mock UI (`npm run dev`), never the real app.
+  Use headless Chrome over CDP at 796x684, DPR 2, after ~60 s so sparklines fill. Plain `--screenshot`
+  with `--virtual-time-budget` breaks the number tweens. The browser-preview wrapper is `h-full`
+  plus `top/bottom: 8px` and clips the footer, so inject `#root > div { height: auto !important }`
+  first. Downscale 75% and save as JPEG q82 (~120 KB).
