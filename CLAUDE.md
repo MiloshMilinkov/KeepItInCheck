@@ -52,3 +52,7 @@ per app, flags idle "dead weight" apps and closes them safely. Proprietary (see 
   with `--virtual-time-budget` breaks the number tweens. The browser-preview wrapper is `h-full`
   plus `top/bottom: 8px` and clips the footer, so inject `#root > div { height: auto !important }`
   first. Downscale 75% and save as JPEG q82 (~120 KB).
+
+## CI
+
+`.github/workflows/ci.yml` calls the shared `node-ci.yml` in `MiloshMilinkov/.github`: it runs the `typecheck`, `lint`, `test` and `build` scripts that exist, plus a gitleaks scan. Check runs with `gh run list -L 3`.
