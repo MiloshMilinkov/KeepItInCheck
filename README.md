@@ -145,6 +145,13 @@ Stored in `%APPDATA%\com.milinkov.keepitincheck\`:
 - `cleanup-log.json`: last 200 cleanup results
 - `usage.json`: per-day, per-app usage totals for the weekly report (kept for 8 days)
 
+## How it was built
+
+Built with [Claude Code](https://claude.com/claude-code). The project rules and commands are in
+[CLAUDE.md](CLAUDE.md), how the dead-weight score works in
+[docs/dead-weight-score.md](docs/dead-weight-score.md), and the general workflow in
+[claude-workflow](https://github.com/MiloshMilinkov/claude-workflow).
+
 ## License
 
 Copyright © 2026 Miloš Milinkov. All rights reserved.
